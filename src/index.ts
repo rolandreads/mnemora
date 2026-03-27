@@ -3,10 +3,10 @@ import { logger } from './utils/logger.util.js';
 import { setCorrelationId } from './utils/runtime.util.js';
 
 async function main(): Promise<void> {
-  const correlationId = `local-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
+  const correlationId = `mnemora-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
   setCorrelationId(correlationId);
 
-  logger.info('Birthday check started', { environment: 'local', correlationId });
+  logger.info('Birthday check started', { correlationId });
 
   try {
     await runBirthdayCheck(logger);
