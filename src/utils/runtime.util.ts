@@ -1,25 +1,5 @@
 import { randomUUID } from 'crypto';
 
-export function isLambda(): boolean {
-  return !!(
-    process.env.AWS_LAMBDA_FUNCTION_NAME ??
-    process.env.LAMBDA_TASK_ROOT ??
-    process.env.AWS_EXECUTION_ENV
-  );
-}
-
-export function getLambdaFunctionName(): string | undefined {
-  return process.env.AWS_LAMBDA_FUNCTION_NAME;
-}
-
-export function getLambdaFunctionVersion(): string | undefined {
-  return process.env.AWS_LAMBDA_FUNCTION_VERSION;
-}
-
-export function getLambdaRequestId(): string | undefined {
-  return process.env.AWS_REQUEST_ID;
-}
-
 class CorrelationContext {
   private static storage = new Map<string, string>();
 
