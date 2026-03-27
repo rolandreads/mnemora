@@ -7,59 +7,63 @@
 
 ## Project Overview
 
-Mnemora is a TypeScript birthday notification bot that fetches birthdays from Google Sheets and sends WhatsApp notifications. It runs as an AWS Lambda function once per day on a scheduled cron.
+Mnemora is a TypeScript birthday notification bot that fetches birthdays from Google Sheets and sends WhatsApp notifications. It runs on a Raspberry Pi via a systemd timer, once per day.
 
 ## Commands
 
 ```bash
-yarn install          # Install dependencies
-yarn dev              # Start development with watch mode
-yarn build            # Compile TypeScript
-yarn type-check       # Type check without emitting
-yarn lint             # Run ESLint
-yarn lint:fix         # Auto-fix lint issues
-yarn deploy           # Deploy to AWS Lambda
-yarn deploy:force     # Force deploy (clears .aws-sam cache)
-yarn invoke:lambda    # Invoke deployed Lambda function
+bun install           # Install dependencies
+bun run dev           # Start development with watch mode
+bun run start         # Run birthday check once
+bun run typecheck     # Type check without emitting
+bun run lint          # Run Biome linter
+bun run lint:fix      # Auto-fix lint issues
+bun run format        # Format code with Biome
+bun run check         # Lint + format in one pass
 ```
 
 ## Architecture
 
 ```
 src/
-├── clients/        # External service clients (googleSheets, whatsapp, s3)
+├── clients/        # External service clients (googleSheets, whatsapp)
 ├── services/       # Core business logic (birthday check orchestration)
-├── lambda/         # AWS Lambda handler and types
-├── scripts/        # Build, packaging, release, and cleanup scripts
+├── scripts/        # Release automation
 ├── utils/          # Shared utilities (date, birthday, name helpers, logger, runtime)
 ├── types/          # Third-party type declarations
 ├── config.ts       # Centralized app configuration
-└── types.ts        # Shared type definitions (BirthdayRecord, Logger, QRAuthenticationRequiredError)
-infrastructure/     # AWS SAM template and samconfig
-scripts/            # Shell scripts (deploy)
+├── types.ts        # Shared type definitions (BirthdayRecord, Logger, QRAuthenticationRequiredError)
+└── index.ts        # Entry point
+systemd/            # systemd service and timer units
 ```
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` and configure:
-- Google Sheets API credentials
-- WhatsApp group name
-- Timezone (defaults to America/Los_Angeles)
+Secrets are managed via 1Password. The `.env.tpl` file contains `op://` references.
+
+For local development:
+```bash
+op run --env-file=.env.tpl -- bun run dev
+```
+
+For production (Pi), systemd injects `OP_SERVICE_ACCOUNT_TOKEN` via `/etc/mnemora/env`, and the service runs `op run --env-file=.env.tpl -- bun run src/index.ts`.
 
 ## Key Files
 
-- `src/index.ts` - Main entry point (local development)
-- `src/lambda/handler.ts` - AWS Lambda handler
-- `src/config.ts` - Centralized configuration (env vars, private key decoding)
-- `infrastructure/template.yaml` - SAM deployment template
+- `src/index.ts` — Entry point
+- `src/config.ts` — Centralized configuration (reads process.env, injected by `op run`)
+- `src/services/birthday.ts` — Core orchestration
+- `src/clients/whatsapp.ts` — WhatsApp Web client (Baileys)
+- `src/clients/googleSheets.ts` — Google Sheets API client
+- `.env.tpl` — 1Password secret references (committed, not actual secrets)
+- `systemd/` — systemd service and timer units
 
 ## Gotchas
 
-- Requires Node >= 24.0.0 and Yarn >= 4.11.0
-- No automated tests - CI runs type-check, lint, and build only
-- Lambda deployment uses AWS SAM (`infrastructure/template.yaml`)
-- WhatsApp auth state stored in `auth_info/` (gitignored)
-- `@whiskeysockets/baileys` MUST be locked to exactly `6.7.21` (no ^ or ~) - newer versions add ~25MB of unused dependencies
+- `@whiskeysockets/baileys` MUST be locked to exactly `6.7.21` (no ^ or ~) — newer versions add ~25MB of unused dependencies
+- No automated tests — verification is `bun run typecheck` + `bun run lint`
+- WhatsApp auth state stored in `auth_info/` (gitignored) — if lost, re-scan QR code
+- First run requires interactive QR scan: `op run --env-file=.env.tpl -- bun run start`
 
 ## Workflow Orchestration
 
@@ -103,9 +107,8 @@ Copy `.env.example` to `.env` and configure:
 
 ## Definition of Done
 
-- `yarn type-check`
-- `yarn lint`
-- `yarn build`
+- `bun run typecheck`
+- `bun run lint`
 
 ## Core Principles
 
@@ -114,4 +117,3 @@ Copy `.env.example` to `.env` and configure:
 - **Simplicity First**: Keep changes as simple as possible and impact minimal code.
 - **No Laziness**: Find root causes. No temporary fixes.
 - **Minimal Impact**: Touch only what is necessary and avoid introducing new bugs.
-- **Local/Lambda Parity**: Local and Lambda environments must behave identically.
