@@ -1,88 +1,46 @@
 import makeWASocket, {
   DisconnectReason,
   useMultiFileAuthState,
-  WASocket,
+  type WASocket,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  ConnectionState,
+  type ConnectionState,
 } from '@whiskeysockets/baileys';
 import baileysLogger from '@whiskeysockets/baileys/lib/Utils/logger.js';
-import { existsSync, mkdirSync, rmSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import qrcode from 'qrcode-terminal';
-import { isLambda } from '../utils/runtime.util.js';
 import { config } from '../config.js';
-import { FileStorage } from './s3.js';
 import { QRAuthenticationRequiredError } from '../types.js';
 import type { Logger } from '../types.js';
 
-// --- Session & Auth Storage ---
+// --- Auth Tracking ---
 
-const sessionStorage = new FileStorage('auth_info');
-const appStorage = new FileStorage('app-data');
+const AUTH_DIR = 'app-data';
 const AUTH_KEY = 'whatsapp-auth.json';
 const REMINDER_DAYS = 7;
-let pendingAuthTimestamp: string | null = null;
 
-async function syncSessionFromS3(sessionPath: string, logger: Logger): Promise<void> {
-  try {
-    await sessionStorage.syncFromS3(sessionPath);
-    logger.info('WhatsApp session synced from S3');
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (msg.includes('not found') || msg.includes('not exist') || msg.includes('archive not found')) {
-      logger.debug('Session not found in S3, will handle authentication');
-      return;
-    }
-    logger.error('Failed to sync session from S3', { error: msg });
-    throw error;
+function getAuthFilePath(): string {
+  const dir = join(process.cwd(), AUTH_DIR);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
   }
+  return join(dir, AUTH_KEY);
 }
 
-async function syncSessionToS3(sessionPath: string, logger: Logger): Promise<void> {
-  try {
-    await sessionStorage.syncToS3(sessionPath);
-    logger.info('WhatsApp session synced to S3');
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    if (msg.includes('not initialized') || msg.includes('not configured')) {
-      logger.debug('S3 not configured, skipping session sync');
-    } else {
-      logger.warn('Failed to sync session to S3', { error: msg });
-    }
-  }
+function recordAuthentication(): void {
+  const filePath = getAuthFilePath();
+  writeFileSync(filePath, JSON.stringify({ timestamp: new Date().toISOString() }));
 }
 
-function recordAuthentication(logger: Logger): void {
-  pendingAuthTimestamp = new Date().toISOString();
-  if (!isLambda()) {
-    flushAuthWrites(logger).catch(() => {});
-  }
-}
-
-async function flushAuthWrites(logger: Logger): Promise<void> {
-  if (!pendingAuthTimestamp) {
-    return;
-  }
+export function getAuthAgeDays(): number | null {
   try {
-    const data = JSON.stringify({ timestamp: pendingAuthTimestamp });
-    if (isLambda()) {
-      await appStorage.writeFile(AUTH_KEY, data);
-    }
-    pendingAuthTimestamp = null;
-  } catch (error) {
-    logger.error('Error flushing authentication record', error);
-  }
-}
-
-export async function getAuthAgeDays(): Promise<number | null> {
-  try {
-    const data = await appStorage.readFile(AUTH_KEY);
-    if (!data) {
+    const filePath = getAuthFilePath();
+    if (!existsSync(filePath)) {
       return null;
     }
-    const authData = JSON.parse(data.toString('utf-8'));
-    const lastAuth = new Date(authData.timestamp);
+    const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    const lastAuth = new Date(data.timestamp);
     if (isNaN(lastAuth.getTime())) {
       return null;
     }
@@ -92,13 +50,10 @@ export async function getAuthAgeDays(): Promise<number | null> {
   }
 }
 
-async function checkAuthReminder(logger: Logger): Promise<void> {
-  if (!isLambda()) {
-    return;
-  }
-  const daysSince = await getAuthAgeDays();
+function checkAuthReminder(logger: Logger): void {
+  const daysSince = getAuthAgeDays();
   if (daysSince === null) {
-    logger.warn('WhatsApp authentication refresh needed - never authenticated');
+    logger.warn('WhatsApp authentication age unknown — never authenticated or file missing');
     return;
   }
   if (daysSince >= REMINDER_DAYS) {
@@ -113,23 +68,15 @@ class WhatsAppSocket {
   private isReady = false;
   private isInitializing = false;
   private readonly sessionPath: string;
-  private readonly runningInLambda: boolean;
   private saveCreds: (() => Promise<void>) | null = null;
   private activeGroupId: string | undefined = undefined;
   private readonly groupNameCache = new Map<string, string>();
 
   constructor() {
-    this.runningInLambda = isLambda();
-    this.sessionPath = this.runningInLambda
-      ? join('/tmp', 'auth_info')
-      : join(process.cwd(), 'auth_info');
+    this.sessionPath = join(process.cwd(), 'auth_info');
     if (!existsSync(this.sessionPath)) {
       mkdirSync(this.sessionPath, { recursive: true });
     }
-  }
-
-  getSessionPath(): string {
-    return this.sessionPath;
   }
 
   isClientReady(): boolean {
@@ -180,9 +127,6 @@ class WhatsAppSocket {
     }
 
     this.isInitializing = true;
-
-    // Sync session from S3 before init
-    await syncSessionFromS3(this.sessionPath, logger);
 
     return new Promise((resolve, reject) => {
       (async () => {
@@ -262,19 +206,6 @@ class WhatsAppSocket {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-          if (this.runningInLambda) {
-            clearInitTimeout();
-            this.isInitializing = false;
-            if (this.sock) {
-              this.sock.end(undefined);
-              this.sock = null;
-            }
-            console.log('QR_CODE_FOR_SCANNING:', JSON.stringify({ qrCode: qr }));
-            reject(new QRAuthenticationRequiredError(qr,
-              'WhatsApp authentication required but QR code scanning is not possible in Lambda. ' +
-              'Please authenticate locally first, then sync the session to S3.'));
-            return;
-          }
           console.log(`\n${'='.repeat(60)}`);
           console.log('WHATSAPP AUTHENTICATION REQUIRED');
           console.log('='.repeat(60));
@@ -365,7 +296,6 @@ class WhatsAppSocket {
 
     const groups = await this.sock.groupFetchAllParticipating();
 
-    // Cache all groups at once to avoid redundant API calls
     const matchesByName = new Map<string, string[]>();
     for (const [jid, meta] of Object.entries(groups)) {
       const key = meta.subject.toLowerCase();
@@ -378,10 +308,8 @@ class WhatsAppSocket {
     const targetKey = groupName.toLowerCase();
     const jid = this.groupNameCache.get(targetKey);
     if (!jid) {
-      const available = Object.values(groups).map(m => m.subject).join(', ');
-      throw new Error(
-        `No WhatsApp group found with name "${groupName}". Available groups: ${available}`,
-      );
+      const available = Object.values(groups).map((m) => m.subject).join(', ');
+      throw new Error(`No WhatsApp group found with name "${groupName}". Available groups: ${available}`);
     }
 
     const duplicates = matchesByName.get(targetKey);
@@ -391,7 +319,6 @@ class WhatsAppSocket {
       );
     }
 
-    // Set activeGroupId for shouldIgnoreJid when resolving the main group
     if (config.whatsapp.groupName?.toLowerCase() === targetKey) {
       this.activeGroupId = jid;
     }
@@ -406,10 +333,9 @@ class WhatsAppSocket {
 
     const normalizedChatId = chatId.includes('@g.us') ? chatId : `${chatId}@g.us`;
 
-    // Fetch group metadata for sender keys
     try {
       await this.sock.groupMetadata(normalizedChatId);
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       if (!msg.includes('not found') && !msg.includes('404')) {
@@ -426,12 +352,10 @@ class WhatsAppSocket {
 
   async destroy(logger: Logger): Promise<void> {
     try {
-      await flushAuthWrites(logger);
-      await syncSessionToS3(this.sessionPath, logger);
       if (this.sock) {
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
         this.sock.end(undefined);
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
@@ -451,10 +375,8 @@ class WhatsAppSocket {
 const socket = new WhatsAppSocket();
 
 export async function initialize(logger: Logger): Promise<void> {
-  await checkAuthReminder(logger);
+  checkAuthReminder(logger);
   await socket.initialize(logger);
-  // Eagerly resolve main group name to fail fast on misconfiguration
-  // and set activeGroupId for JID filtering from connection start
   if (config.whatsapp.groupName) {
     await socket.resolveGroupJid(config.whatsapp.groupName);
   }
@@ -497,7 +419,7 @@ export async function sendToGroup(groupName: string, message: string, logger: Lo
         if (!socket.isClientReady()) {
           await socket.initialize(logger);
         }
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 3000));
         continue;
       }
       throw lastError;
@@ -508,7 +430,7 @@ export async function sendToGroup(groupName: string, message: string, logger: Lo
 }
 
 export async function destroy(logger: Logger): Promise<void> {
-  recordAuthentication(logger);
+  recordAuthentication();
   await socket.destroy(logger);
 }
 
