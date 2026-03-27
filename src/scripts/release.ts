@@ -150,7 +150,7 @@ function formatCommitMessage(message: string): string {
 
 function generateReleaseNotes(version: string): string {
   const commits = getCommits();
-  const categories: Record<string, Array<string>> = {};
+  const categories: Record<string, string[]> = {};
   
   const categoryLabels: Record<string, string> = {
     features: '✨ Features',

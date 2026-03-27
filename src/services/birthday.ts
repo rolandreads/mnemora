@@ -23,7 +23,9 @@ function formatMonthlyDigest(birthdays: BirthdayRecord[]): string | null {
   const sorted = [...birthdays].sort((a, b) => a.birthday.getTime() - b.birthday.getTime());
   const byDate = sorted.reduce<Record<string, string[]>>((acc, r) => {
     const key = formatDateShort(r.birthday);
-    (acc[key] ??= []).push(getFullName(r.firstName, r.lastName));
+    const names = acc[key] ?? [];
+    acc[key] = names;
+    names.push(getFullName(r.firstName, r.lastName));
     return acc;
   }, {});
 

@@ -18,7 +18,7 @@ export interface Logger {
 export class QRAuthenticationRequiredError extends Error {
   public readonly qrCode: string;
 
-  constructor(qrCode: string, message: string = 'WhatsApp QR code authentication required.') {
+  constructor(qrCode: string, message = 'WhatsApp QR code authentication required.') {
     super(message);
     this.name = 'QRAuthenticationRequiredError';
     this.qrCode = qrCode;
