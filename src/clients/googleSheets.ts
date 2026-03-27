@@ -1,7 +1,7 @@
 import { google, type sheets_v4 } from 'googleapis';
 import { config } from '../config.js';
-import { parseRowToBirthdays } from '../utils/birthday-helpers.util.js';
 import type { BirthdayRecord } from '../types.js';
+import { parseRowToBirthdays } from '../utils/birthday-helpers.util.js';
 
 let sheetsClient: sheets_v4.Sheets | null = null;
 let cachedSheetName: string | null = null;

@@ -5,10 +5,10 @@
  */
 
 import { execSync } from 'node:child_process';
-import { readFileSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
-import { tmpdir } from 'node:os';
 
 const PROJECT_ROOT = process.cwd();
 
@@ -40,7 +40,7 @@ function exec(command: string, options?: { cwd?: string; stdio?: 'inherit' | 'pi
   return execSync(command, {
     cwd: options?.cwd ?? PROJECT_ROOT,
     stdio: options?.stdio ?? 'pipe',
-    encoding: 'utf-8'
+    encoding: 'utf-8',
   }).trim();
 }
 
@@ -52,7 +52,7 @@ function getCurrentVersion(): string {
 function bumpVersion(versionType: VersionType, currentVersion: string): string {
   const parts = currentVersion.split('.').map(Number);
   const [major, minor, patch] = parts;
-  
+
   switch (versionType) {
     case 'major':
       return `${major + 1}.0.0`;
@@ -95,25 +95,25 @@ function getCommits(): Array<{ hash: string; message: string }> {
   } catch {
     previousTag = '';
   }
-  
+
   let commitOutput: string;
   if (!previousTag) {
     commitOutput = exec('git log --pretty=format:"%h|%s" --reverse');
   } else {
     commitOutput = exec(`git log --pretty=format:"%h|%s" ${previousTag}..HEAD`);
   }
-  
+
   return commitOutput
     .split('\n')
-    .filter(line => line.trim() && !line.includes('chore: bump version'))
-    .map(line => {
+    .filter((line) => line.trim() && !line.includes('chore: bump version'))
+    .map((line) => {
       const [hash, ...messageParts] = line.split('|');
       return {
         hash: hash || '',
-        message: messageParts.join('|') || ''
+        message: messageParts.join('|') || '',
       };
     })
-    .filter(commit => commit.hash && commit.message);
+    .filter((commit) => commit.hash && commit.message);
 }
 
 function categorizeCommit(message: string): string {
@@ -151,7 +151,7 @@ function formatCommitMessage(message: string): string {
 function generateReleaseNotes(version: string): string {
   const commits = getCommits();
   const categories: Record<string, string[]> = {};
-  
+
   const categoryLabels: Record<string, string> = {
     features: '✨ Features',
     fixes: '🐛 Bug Fixes',
@@ -160,25 +160,25 @@ function generateReleaseNotes(version: string): string {
     documentation: '📝 Documentation',
     build: '🔨 Build',
     chores: '🔧 Chores',
-    other: '📦 Other Changes'
+    other: '📦 Other Changes',
   };
-  
+
   for (const commit of commits) {
     const category = categorizeCommit(commit.message);
     const formatted = formatCommitMessage(commit.message);
-    
+
     if (!categories[category]) {
       categories[category] = [];
     }
-    
+
     categories[category].push(`- ${formatted} (${commit.hash})`);
   }
-  
-  let notes = '## What\'s Changed\n\n';
+
+  let notes = "## What's Changed\n\n";
   let hasChanges = false;
-  
+
   const categoryOrder = ['features', 'fixes', 'refactor', 'performance', 'documentation', 'build', 'chores', 'other'];
-  
+
   for (const category of categoryOrder) {
     if (categories[category] && categories[category].length > 0) {
       hasChanges = true;
@@ -186,24 +186,24 @@ function generateReleaseNotes(version: string): string {
       notes += `${categories[category].join('\n')}\n\n`;
     }
   }
-  
+
   if (!hasChanges) {
     notes += 'No significant changes in this release.\n\n';
   }
-  
+
   let previousTag: string;
   try {
     previousTag = exec('git describe --tags --abbrev=0');
   } catch {
     previousTag = '';
   }
-  
+
   if (previousTag) {
     notes += `**Full Changelog**: ${previousTag}...v${version}`;
   } else {
     notes += `**Full Changelog**: v${version}`;
   }
-  
+
   return notes;
 }
 
@@ -211,7 +211,7 @@ function updateChangelog(version: string, releaseNotes: string): void {
   const changelogPath = join(PROJECT_ROOT, 'CHANGELOG.md');
   const header = `## [${version}] - ${new Date().toISOString().split('T')[0]}`;
   const newEntry = `${header}\n\n${releaseNotes.trim()}\n`;
-  
+
   if (!existsSync(changelogPath)) {
     const content = `# Changelog
 
@@ -231,31 +231,31 @@ ${newEntry}`;
     writeFileSync(changelogPath, content, 'utf-8');
     return;
   }
-  
+
   const existing = readFileSync(changelogPath, 'utf-8');
   const lines = existing.split('\n');
   const newLines: string[] = [];
   let foundUnreleased = false;
   let inserted = false;
   let i = 0;
-  
+
   // Find and copy lines until we reach the Unreleased section
   for (i = 0; i < lines.length; i++) {
     const line = lines[i];
     newLines.push(line);
-    
+
     if (/^## \[Unreleased\]/.test(line)) {
       foundUnreleased = true;
       break;
     }
   }
-  
+
   if (foundUnreleased) {
     // Continue through Unreleased section until we find a version entry
     i++;
     while (i < lines.length) {
       const line = lines[i];
-      
+
       // Check if we hit the next version entry (format: ## [X.Y.Z])
       if (/^## \[\d+\.\d+\.\d+\]/.test(line)) {
         // Insert new version before this one
@@ -265,7 +265,7 @@ ${newEntry}`;
         inserted = true;
         break;
       }
-      
+
       // Check if we hit a separator (---)
       if (/^---/.test(line)) {
         // Insert new version before separator
@@ -275,11 +275,11 @@ ${newEntry}`;
         inserted = true;
         break;
       }
-      
+
       newLines.push(line);
       i++;
     }
-    
+
     // Copy remaining lines if any
     if (i < lines.length) {
       for (let j = i; j < lines.length; j++) {
@@ -310,13 +310,13 @@ ${newEntry}`;
       '---',
       '',
       ...newEntry.split('\n'),
-      ''
+      '',
     ];
     const allLines = headerLines.concat(newLines);
     writeFileSync(changelogPath, allLines.join('\n'), 'utf-8');
     return;
   }
-  
+
   writeFileSync(changelogPath, newLines.join('\n'), 'utf-8');
 }
 
@@ -337,7 +337,7 @@ async function createGitHubRelease(tag: string, releaseNotes: string): Promise<v
     }
     return;
   }
-  
+
   // Check if gh is authenticated
   try {
     exec('gh auth status');
@@ -346,12 +346,12 @@ async function createGitHubRelease(tag: string, releaseNotes: string): Promise<v
     printInfo('Run: gh auth login');
     return;
   }
-  
+
   printInfo('Creating GitHub release...');
-  
+
   // Create temporary file for release notes
   const notesFile = join(tmpdir(), `release-notes-${Date.now()}.txt`);
-  
+
   try {
     writeFileSync(notesFile, releaseNotes, 'utf-8');
     exec(`gh release create "${tag}" --title "${tag}" --notes-file "${notesFile}"`);
@@ -371,11 +371,11 @@ async function createGitHubRelease(tag: string, releaseNotes: string): Promise<v
 function question(query: string): Promise<string> {
   const rl = createInterface({
     input: process.stdin,
-    output: process.stdout
+    output: process.stdout,
   });
-  
-  return new Promise(resolve => {
-    rl.question(query, answer => {
+
+  return new Promise((resolve) => {
+    rl.question(query, (answer) => {
       rl.close();
       resolve(answer);
     });
@@ -387,7 +387,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
   console.log('Mnemora Release');
   console.log('==========================================');
   console.log('');
-  
+
   // Determine target version
   let targetVersion: string;
   if (specificVersion) {
@@ -405,18 +405,18 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     const currentVersion = getCurrentVersion();
     targetVersion = bumpVersion(versionType, currentVersion);
   }
-  
+
   const currentVersion = getCurrentVersion();
   const tag = `v${targetVersion}`;
-  
+
   console.log(`Current version: ${currentVersion}`);
   console.log(`Target version:  ${targetVersion}`);
   console.log(`Tag:            ${tag}`);
   console.log('');
-  
+
   // Check prerequisites
   printInfo('Checking prerequisites...');
-  
+
   // Check git
   try {
     exec('which git');
@@ -425,7 +425,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     process.exit(1);
   }
   printSuccess('Git installed');
-  
+
   // Check if we're in a git repo
   try {
     exec('git rev-parse --git-dir');
@@ -433,7 +433,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError('Not a git repository');
     process.exit(1);
   }
-  
+
   // Check if working directory is clean
   try {
     checkGitClean();
@@ -442,7 +442,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError(error instanceof Error ? error.message : 'Working directory is not clean');
     process.exit(1);
   }
-  
+
   // Check if tag already exists
   try {
     exec(`git rev-parse "${tag}"`);
@@ -451,7 +451,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
   } catch {
     // Tag doesn't exist, continue
   }
-  
+
   // Check if we're on main/master branch
   const currentBranch = exec('git branch --show-current');
   if (currentBranch !== 'main' && currentBranch !== 'master') {
@@ -461,7 +461,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
       process.exit(1);
     }
   }
-  
+
   // Generate structured release notes
   printInfo('Generating release notes...');
   const releaseNotes = generateReleaseNotes(targetVersion);
@@ -470,7 +470,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     process.exit(1);
   }
   printSuccess('Release notes generated');
-  
+
   // Update CHANGELOG.md
   printInfo('Updating CHANGELOG.md...');
   try {
@@ -480,7 +480,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError(`Failed to update CHANGELOG.md: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
-  
+
   // Update package.json version
   printInfo('Updating package.json version...');
   try {
@@ -492,7 +492,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError(`Failed to update package.json: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
-  
+
   // Commit version bump and changelog
   printInfo('Committing version bump and changelog...');
   try {
@@ -511,14 +511,14 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError(`Failed to commit version bump: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
-  
+
   // Create git tag
   printInfo('Creating git tag...');
   try {
     // Use a temporary file for the tag message to handle multi-line release notes
     const tagMessageFile = join(tmpdir(), `tag-message-${Date.now()}.txt`);
     const tagMessage = `Release ${tag}\n\n${releaseNotes}`;
-    
+
     try {
       writeFileSync(tagMessageFile, tagMessage, 'utf-8');
       exec(`git tag -a "${tag}" -F "${tagMessageFile}"`);
@@ -534,7 +534,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError(`Failed to create git tag: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
-  
+
   // Push commits and tags
   printInfo('Pushing to remote...');
   try {
@@ -545,11 +545,11 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     printError(`Failed to push: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   }
-  
+
   // Create GitHub release
   console.log('');
   await createGitHubRelease(tag, releaseNotes);
-  
+
   console.log('');
   console.log('==========================================');
   printSuccess(`RELEASE COMPLETE: ${tag}`);
@@ -576,7 +576,7 @@ if (args[0] === 'version') {
     printError('Please specify a version number');
     process.exit(1);
   }
-  release(undefined, args[1]).catch(error => {
+  release(undefined, args[1]).catch((error) => {
     printError(`Release failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   });
@@ -586,9 +586,8 @@ if (args[0] === 'version') {
     printError(`Invalid version type: ${versionType}. Use major, minor, or patch.`);
     process.exit(1);
   }
-  release(versionType).catch(error => {
+  release(versionType).catch((error) => {
     printError(`Release failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     process.exit(1);
   });
 }
-

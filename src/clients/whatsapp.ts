@@ -1,18 +1,18 @@
-import makeWASocket, {
-  DisconnectReason,
-  useMultiFileAuthState,
-  type WASocket,
-  fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore,
-  type ConnectionState,
-} from '@whiskeysockets/baileys';
-import baileysLogger from '@whiskeysockets/baileys/lib/Utils/logger.js';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import makeWASocket, {
+  type ConnectionState,
+  DisconnectReason,
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore,
+  useMultiFileAuthState,
+  type WASocket,
+} from '@whiskeysockets/baileys';
+import baileysLogger from '@whiskeysockets/baileys/lib/Utils/logger.js';
 import qrcode from 'qrcode-terminal';
 import { config } from '../config.js';
-import { QRAuthenticationRequiredError } from '../types.js';
 import type { Logger } from '../types.js';
+import { QRAuthenticationRequiredError } from '../types.js';
 
 // --- Auth Tracking ---
 
@@ -228,12 +228,13 @@ class WhatsAppSocket {
 
         if (connection === 'close') {
           const error = lastDisconnect?.error;
-          const statusCode = error &&
+          const statusCode =
+            error &&
             typeof error === 'object' &&
             'output' in error &&
             typeof (error as { output?: { statusCode?: number } }).output === 'object'
-            ? (error as { output: { statusCode?: number } }).output?.statusCode
-            : undefined;
+              ? (error as { output: { statusCode?: number } }).output?.statusCode
+              : undefined;
 
           if (statusCode === DisconnectReason.loggedOut || statusCode === 401) {
             clearInitTimeout();
@@ -247,7 +248,9 @@ class WhatsAppSocket {
               if (existsSync(this.sessionPath)) {
                 rmSync(this.sessionPath, { recursive: true, force: true });
               }
-            } catch { /* ignore */ }
+            } catch {
+              /* ignore */
+            }
             setTimeout(async () => {
               try {
                 await this.initialize(logger);
@@ -308,7 +311,9 @@ class WhatsAppSocket {
     const targetKey = groupName.toLowerCase();
     const jid = this.groupNameCache.get(targetKey);
     if (!jid) {
-      const available = Object.values(groups).map((m) => m.subject).join(', ');
+      const available = Object.values(groups)
+        .map((m) => m.subject)
+        .join(', ');
       throw new Error(`No WhatsApp group found with name "${groupName}". Available groups: ${available}`);
     }
 
@@ -359,7 +364,11 @@ class WhatsAppSocket {
       }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
-      if (!msg.includes('Connection Closed') && !msg.includes('Connection closed') && !msg.includes('Precondition Required')) {
+      if (
+        !msg.includes('Connection Closed') &&
+        !msg.includes('Connection closed') &&
+        !msg.includes('Precondition Required')
+      ) {
         logger.error('Error during WhatsApp client cleanup', error);
       }
     } finally {
@@ -410,7 +419,8 @@ export async function sendToGroup(groupName: string, message: string, logger: Lo
       }
 
       lastError = error instanceof Error ? error : new Error(String(error));
-      const isProtocolError = lastError.message.includes('Protocol error') ||
+      const isProtocolError =
+        lastError.message.includes('Protocol error') ||
         lastError.message.includes('Execution context') ||
         lastError.message.includes('Target closed');
 

@@ -2,19 +2,19 @@ function sanitizeName(name: string): string {
   if (!name) {
     return '';
   }
-  
+
   let sanitized = name.trim();
   sanitized = sanitized.replace(/[.,;:!?]+$/, '');
   sanitized = sanitized.trim();
   sanitized = sanitized.replace(/\s+/g, ' ');
-  
+
   return sanitized;
 }
 
 export function sanitizeNames(firstName: string, lastName?: string): { firstName: string; lastName?: string } {
   const sanitizedFirstName = sanitizeName(firstName);
   const sanitizedLastName = lastName ? sanitizeName(lastName) : undefined;
-  
+
   return {
     firstName: sanitizedFirstName,
     lastName: sanitizedLastName ?? undefined,
@@ -52,5 +52,3 @@ export function extractNameParts(fullName: string): { firstName: string; lastNam
     lastName: lastName || undefined,
   };
 }
-
-

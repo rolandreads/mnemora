@@ -1,6 +1,6 @@
 import dayjs from 'dayjs';
-import utc from 'dayjs/plugin/utc.js';
 import timezone from 'dayjs/plugin/timezone.js';
+import utc from 'dayjs/plugin/utc.js';
 import { config } from '../config.js';
 
 dayjs.extend(utc);
@@ -37,8 +37,20 @@ function createDate(month: number, day: number, year?: number): Date {
 }
 
 function createDateFromMonthName(monthName: string, day: number, year?: number): Date | null {
-  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june',
-                      'july', 'august', 'september', 'october', 'november', 'december'];
+  const monthNames = [
+    'january',
+    'february',
+    'march',
+    'april',
+    'may',
+    'june',
+    'july',
+    'august',
+    'september',
+    'october',
+    'november',
+    'december',
+  ];
   const input = monthName.toLowerCase();
 
   // Try exact match first
@@ -46,7 +58,7 @@ function createDateFromMonthName(monthName: string, day: number, year?: number):
 
   // Then try prefix match, but only if input is at least 3 chars (standard abbreviation)
   if (monthIndex === -1 && input.length >= 3) {
-    monthIndex = monthNames.findIndex(m => m.startsWith(input));
+    monthIndex = monthNames.findIndex((m) => m.startsWith(input));
   }
 
   if (monthIndex === -1) {
@@ -136,7 +148,7 @@ export function formatTimestampHumanReadable(timestamp: string | Date): string {
   const tz = getTimezone();
   const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
   const zonedDate = dayjs(date).tz(tz);
-  
+
   // Format: "Nov 20, 2025 at 8:18 AM PST"
   return zonedDate.format('MMM D, YYYY [at] h:mm A z');
 }
