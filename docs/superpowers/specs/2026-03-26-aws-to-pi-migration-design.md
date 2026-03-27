@@ -95,8 +95,10 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
+User=mnemora
+Group=mnemora
 EnvironmentFile=/etc/mnemora/env
-WorkingDirectory=/path/to/mnemora
+WorkingDirectory=/opt/mnemora
 ExecStart=/usr/bin/op run --env-file=.env.tpl -- bun run src/index.ts
 TimeoutStartSec=300
 
@@ -104,9 +106,10 @@ TimeoutStartSec=300
 WantedBy=multi-user.target
 ```
 
-- `EnvironmentFile=/etc/mnemora/env` contains only `OP_SERVICE_ACCOUNT_TOKEN=<token>`, permissions `600 root:root`
+- `User=mnemora` / `Group=mnemora` — dedicated service account, no login shell
+- `EnvironmentFile=/etc/mnemora/env` contains only `OP_SERVICE_ACCOUNT_TOKEN=<token>`, permissions `600 root:root` (systemd reads it as root before dropping to `mnemora` user)
 - `TimeoutStartSec=300` — generous timeout for WhatsApp connection + Google Sheets fetch
-- `WorkingDirectory` set to the repo checkout on the Pi
+- `WorkingDirectory=/opt/mnemora` — repo checkout owned by `mnemora:mnemora`
 
 ### `systemd/mnemora.timer`
 
@@ -145,13 +148,14 @@ WHATSAPP_GROUP_NAME=op://Private/Mnemora/WHATSAPP_GROUP_NAME
 
 Add a section to README or a `docs/pi-setup.md` covering:
 
-1. Install Bun on Pi (ARM64)
-2. Install 1Password CLI (`op`)
-3. Create 1Password service account, store token in `/etc/mnemora/env`
-4. Create the 1Password vault item with the 5 secrets
-5. Clone repo, `bun install`
-6. Initial WhatsApp auth: `op run --env-file=.env.tpl -- bun run src/index.ts` (scan QR)
-7. Copy systemd units to `/etc/systemd/system/`, then `sudo systemctl enable --now mnemora.timer`
+1. Create service user: `sudo useradd --system --shell /usr/sbin/nologin --home-dir /opt/mnemora --create-home mnemora`
+2. Install Bun on Pi (ARM64) — install system-wide or in `/opt/mnemora`
+3. Install 1Password CLI (`op`)
+4. Create 1Password service account, store token in `/etc/mnemora/env` (`sudo mkdir /etc/mnemora && sudo chmod 700 /etc/mnemora`)
+5. Create the 1Password vault item with the 5 secrets
+6. Clone repo to `/opt/mnemora`, chown to `mnemora:mnemora`, `bun install`
+7. Initial WhatsApp auth (as mnemora user): `sudo -u mnemora op run --env-file=.env.tpl -- bun run src/index.ts` (scan QR — one-time interactive step)
+8. Copy systemd units to `/etc/systemd/system/`, then `sudo systemctl enable --now mnemora.timer`
 
 ## What Gets Modified
 
@@ -227,9 +231,17 @@ Add a section to README or a `docs/pi-setup.md` covering:
 ### Secret Lifecycle
 
 1. **At rest**: Secrets live in 1Password vault only. Never on disk in plaintext.
-2. **Bootstrap**: Single `OP_SERVICE_ACCOUNT_TOKEN` in `/etc/mnemora/env` (600 root:root). This is the only secret on the Pi's filesystem.
-3. **At runtime**: `op run --env-file=.env.tpl` resolves `op://` references, injects real values as environment variables into the Bun process. They exist only in process memory for the duration of the run.
+2. **Bootstrap**: Single `OP_SERVICE_ACCOUNT_TOKEN` in `/etc/mnemora/env` (600 root:root). This is the only secret on the Pi's filesystem. systemd reads it as root before dropping privileges to the `mnemora` user.
+3. **At runtime**: `op run --env-file=.env.tpl` resolves `op://` references, injects real values as environment variables into the Bun process running as `mnemora`. They exist only in process memory for the duration of the run.
 4. **In the repo**: `.env.tpl` contains `op://` references (not secrets). Safe to commit.
+
+### Service User Isolation
+
+- `mnemora` is a system user with no login shell (`/usr/sbin/nologin`)
+- Home directory: `/opt/mnemora` (the repo checkout)
+- Owns: repo files, `auth_info/` (WhatsApp session), `bun.lockb`, `node_modules/`
+- Cannot: SSH in, run interactive shells, access other users' files
+- The `OP_SERVICE_ACCOUNT_TOKEN` is never readable by the `mnemora` user directly — systemd injects it into the process environment
 
 ### What NOT to do
 
