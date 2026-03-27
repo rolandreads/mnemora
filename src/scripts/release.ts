@@ -561,7 +561,7 @@ async function release(versionType?: VersionType, specificVersion?: string): Pro
     if (repoMatch) {
       console.log('Next steps:');
       console.log(`1. Review the release at: https://github.com/${repoMatch[1]}/releases/tag/${tag}`);
-      console.log('2. Deploy to production: yarn deploy');
+      console.log('2. Pull on Pi to deploy: git pull && bun install');
     }
   } catch {
     // Ignore errors
